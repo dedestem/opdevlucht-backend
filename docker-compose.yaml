@@ -8,7 +8,7 @@ services:
       MYSQL_PASSWORD: db_password
       MYSQL_ROOT_HOST: '%'
     volumes:
-      - db_data:/var/lib/mysql
+      - ./mysql_data:/var/lib/mysql
     networks:
       - internal
     dns:
@@ -46,9 +46,6 @@ services:
       - internal
     dns:
       - 192.168.1.141
-
-volumes:
-  db_data:
 
 networks:
   internal:
