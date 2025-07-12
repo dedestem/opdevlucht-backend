@@ -338,6 +338,7 @@ router.post("/leave-match", async (ctx) => {
     console.log(token.trim());
 
     if (sessions.length === 0) {
+      console.log("Session not found")
       ctx.response.status = 404;
       ctx.response.body = { error: "session not found" };
       return;
