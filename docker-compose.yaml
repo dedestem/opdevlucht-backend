@@ -29,17 +29,24 @@ services:
     dns:
       - 192.168.1.141
 
-  adminer:
-    image: adminer
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
     restart: always
     ports:
-      - 4501:8080
+      - 4501:80
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: db_root_password
+    depends_on:
+      - db
     networks:
       - internal
     dns:
       - 192.168.1.141
+
 volumes:
-  db_data:
+  db_data: ./db_Data
 
 networks:
   internal:
