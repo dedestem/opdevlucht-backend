@@ -314,7 +314,7 @@ router.post("/change-role", async (ctx) => {
     // Check of requester owner is
     const requester = await client.query(
       "SELECT * FROM sessions WHERE token = ? AND match_id = ? AND is_owner = TRUE",
-      [token, matchId],
+      [matchId, token],
     );
     if (requester.length === 0) {
       ctx.response.status = 403;
