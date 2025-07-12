@@ -284,11 +284,11 @@ router.post("/join-match", async (ctx) => {
 });
 
 // Endpoint om rollen aan te passen (alleen door owner)
-// Verwacht JSON body: { matchId, playerId, newRole, tokenRequester }
+// Verwacht JSON body: { matchId, playerId, newRole, token }
 router.post("/change-role", async (ctx) => {
   try {
     const body = await ctx.request.body({ type: "json" }).value;
-    const { matchId, playerId, newRole, tokenRequester } = body;
+    const { matchId, playerId, newRole, token } = body;
 
     if (!["hunter", "criminal"].includes(newRole)) {
       ctx.response.status = 400;
@@ -299,7 +299,7 @@ router.post("/change-role", async (ctx) => {
     if (
       typeof matchId !== "number" ||
       typeof playerId !== "number" ||
-      typeof tokenRequester !== "string"
+      typeof token !== "string"
     ) {
       ctx.response.status = 400;
       ctx.response.body = { error: "invalid data" };
@@ -309,7 +309,7 @@ router.post("/change-role", async (ctx) => {
     // Check of requester owner is
     const requester = await client.query(
       "SELECT * FROM sessions WHERE token = ? AND match_id = ? AND is_owner = TRUE",
-      [tokenRequester, matchId],
+      [token, matchId],
     );
     if (requester.length === 0) {
       ctx.response.status = 403;
