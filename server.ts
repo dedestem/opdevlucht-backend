@@ -189,14 +189,13 @@ router.post("/join-match", async (ctx) => {
     const token = generateToken();
 
     // Voeg speler toe
-    const insertResult = await client.execute(
+    const _insertResult = await client.execute(
       `INSERT INTO sessions (match_id, name, role, is_owner, token) VALUES (?, ?, ?, ?, ?)`,
       [match.id, name.trim(), role, false, token],
     );
 
     ctx.response.status = 200;
     ctx.response.body = {
-      playerId: insertResult.lastInsertId,
       role,
       token,
       matchId: match.id,
@@ -279,6 +278,47 @@ router.get("/match-players/:joincode", async (ctx) => {
   ctx.response.status = 200;
   ctx.response.body = { players };
 });
+
+// Leave match endpoint - speler verlaat de match via zijn token
+router.post("/leave-match", async (ctx) => {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const { token } = body;
+
+    if (typeof token !== "string" || token.trim() === "") {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "invalid token" };
+      return;
+    }
+
+    // Zoek speler sessie
+    const sessions = await client.query(
+      "SELECT * FROM sessions WHERE token = ?",
+      [token.trim()],
+    );
+    if (sessions.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "session not found" };
+      return;
+    }
+
+    const session = sessions[0];
+
+    // Verwijder sessie
+    await client.execute(
+      "DELETE FROM sessions WHERE id = ?",
+      [session.id],
+    );
+
+    ctx.response.status = 200;
+    ctx.response.body = { success: true };
+  } catch (err) {
+    console.error(err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "unknown error" };
+  }
+});
+
 
 app.use(router.routes());
 app.use(router.allowedMethods());
