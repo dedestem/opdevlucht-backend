@@ -2,18 +2,33 @@
 
 import { Application, Router } from "https://deno.land/x/oak@v12.5.0/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
-import mysql from "npm:mysql2/promise";
+import { Client } from "https://deno.land/x/mysql/mod.ts";
 
-// Maak een MySQL connection pool
-const pool = mysql.createPool({
-  host: Deno.env.get("DB_HOST"),
-  user: Deno.env.get("DB_USER"),
+// Maak MySQL client aan
+const client = await new Client().connect({
+  hostname: Deno.env.get("DB_HOST"),
+  username: Deno.env.get("DB_USER"),
   password: Deno.env.get("DB_PASSWORD"),
-  database: Deno.env.get("DB_NAME"),
+  db: Deno.env.get("DB_NAME"),
   port: 3306,
-  waitForConnections: true,
-  connectionLimit: 10,
 });
+
+// Functie om te wachten tot de DB klaar is
+async function waitForDbReady(retries = 20, delayMs = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await client.execute("SELECT 1");
+      console.log("DB is ready!");
+      return;
+    } catch (error) {
+      console.log(`DB nog niet ready, probeer opnieuw in ${delayMs}ms... Error: ${error.message}`);
+      await new Promise((res) => setTimeout(res, delayMs));
+    }
+  }
+  throw new Error("DB connectie mislukt na meerdere pogingen");
+}
+
+await waitForDbReady();
 
 // Init database tabel als hij niet bestaat
 const createTableQuery = `
@@ -27,26 +42,7 @@ const createTableQuery = `
   )
 `;
 
-async function waitForDbReady(retries = 10, delayMs = 2000) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const connection = await pool.getConnection();
-      connection.release();
-      console.log("DB is ready!");
-      return;
-    } catch {
-      console.log(`DB nog niet ready, probeer opnieuw in ${delayMs}ms...`);
-      await new Promise((res) => setTimeout(res, delayMs));
-    }
-  }
-  throw new Error("DB connectie mislukt na meerdere pogingen");
-}
-
-await waitForDbReady();
-
-const connection = await pool.getConnection();
-await connection.query(createTableQuery);
-connection.release();
+await client.execute(createTableQuery);
 
 // Koppelcode generator
 function generateKoppelcode(length = 6) {
@@ -61,11 +57,8 @@ function generateKoppelcode(length = 6) {
 async function generateUniqueKoppelcode(): Promise<string> {
   while (true) {
     const code = generateKoppelcode();
-    const [rows] = await pool.query(
-      `SELECT id FROM matches WHERE koppelcode = ?`,
-      [code],
-    ) as [any[], any];
-    if (rows.length === 0) {
+    const result = await client.query("SELECT id FROM matches WHERE koppelcode = ?", [code]);
+    if (result.length === 0) {
       return code;
     }
   }
@@ -105,14 +98,14 @@ router.post("/create-match", async (ctx) => {
 
     const koppelcode = await generateUniqueKoppelcode();
 
-    const [result] = await pool.query(
+    const result = await client.execute(
       `INSERT INTO matches (koppelcode, maxAantalSpelers, locatieInterval, spelDuur) VALUES (?, ?, ?, ?)`,
       [koppelcode, maxAantalSpelers, locatieInterval, spelDuur],
-    ) as [mysql.ResultSetHeader, any];
+    );
 
     ctx.response.status = 200;
     ctx.response.body = {
-      id: result.insertId,
+      id: result.lastInsertId,
       koppelcode,
     };
   } catch (err) {
