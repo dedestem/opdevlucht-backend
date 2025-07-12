@@ -4,7 +4,7 @@ import { Application, Router } from "https://deno.land/x/oak@v12.5.0/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { Client } from "https://deno.land/x/mysql/mod.ts";
 
-// Maak MySQL client aan
+// Create MySQL client
 const client = await new Client().connect({
   hostname: Deno.env.get("DB_HOST"),
   username: Deno.env.get("DB_USER"),
@@ -13,7 +13,7 @@ const client = await new Client().connect({
   port: 3306,
 });
 
-// Functie om te wachten tot de DB klaar is
+// Function to wait until DB is ready
 async function waitForDbReady(retries = 20, delayMs = 2000) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -21,31 +21,31 @@ async function waitForDbReady(retries = 20, delayMs = 2000) {
       console.log("DB is ready!");
       return;
     } catch (error) {
-      console.log(`DB nog niet ready, probeer opnieuw in ${delayMs}ms... Error: ${error.message}`);
+      console.log(`DB not ready yet, retrying in ${delayMs}ms... Error: ${error.message}`);
       await new Promise((res) => setTimeout(res, delayMs));
     }
   }
-  throw new Error("DB connectie mislukt na meerdere pogingen");
+  throw new Error("DB connection failed after multiple attempts");
 }
 
 await waitForDbReady();
 
-// Init database tabel als hij niet bestaat
+// Initialize database table if it doesn't exist
 const createTableQuery = `
   CREATE TABLE IF NOT EXISTS matches (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    koppelcode VARCHAR(10) NOT NULL UNIQUE,
-    maxAantalSpelers INT NOT NULL,
-    locatieInterval INT NOT NULL,
-    spelDuur INT NOT NULL,
+    joincode VARCHAR(10) NOT NULL UNIQUE,
+    maxplayers INT NOT NULL,
+    locationinterval INT NOT NULL,
+    matchtime INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )
 `;
 
 await client.execute(createTableQuery);
 
-// Koppelcode generator
-function generateKoppelcode(length = 6) {
+// Join code generator
+function generateJoinCode(length = 6) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
   for (let i = 0; i < length; i++) {
@@ -54,10 +54,10 @@ function generateKoppelcode(length = 6) {
   return result;
 }
 
-async function generateUniqueKoppelcode(): Promise<string> {
+async function generateUniqueJoinCode(): Promise<string> {
   while (true) {
-    const code = generateKoppelcode();
-    const result = await client.query("SELECT id FROM matches WHERE koppelcode = ?", [code]);
+    const code = generateJoinCode();
+    const result = await client.query("SELECT id FROM matches WHERE joincode = ?", [code]);
     if (result.length === 0) {
       return code;
     }
@@ -84,29 +84,29 @@ router.get("/connectivitycheck", (ctx) => {
 router.post("/create-match", async (ctx) => {
   try {
     const body = await ctx.request.body({ type: "json" }).value;
-    const { maxAantalSpelers, locatieInterval, spelDuur } = body;
+    const { maxPlayers, locationInterval, matchDuration } = body;
 
     if (
-      typeof maxAantalSpelers !== "number" || maxAantalSpelers <= 0 ||
-      typeof locatieInterval !== "number" || locatieInterval <= 0 ||
-      typeof spelDuur !== "number" || spelDuur <= 0
+      typeof maxPlayers !== "number" || maxPlayers <= 0 ||
+      typeof locationInterval !== "number" || locationInterval <= 0 ||
+      typeof matchDuration !== "number" || matchDuration <= 0
     ) {
       ctx.response.status = 400;
       ctx.response.body = { error: "invalid data" };
       return;
     }
 
-    const koppelcode = await generateUniqueKoppelcode();
+    const joincode = await generateUniqueJoinCode();
 
     const result = await client.execute(
-      `INSERT INTO matches (koppelcode, maxAantalSpelers, locatieInterval, spelDuur) VALUES (?, ?, ?, ?)`,
-      [koppelcode, maxAantalSpelers, locatieInterval, spelDuur],
+      `INSERT INTO matches (joincode, maxplayers, locationinterval, matchtime) VALUES (?, ?, ?, ?)`,
+      [joincode, maxPlayers, locationInterval, matchDuration],
     );
 
     ctx.response.status = 200;
     ctx.response.body = {
       id: result.lastInsertId,
-      koppelcode,
+      joincode,
     };
   } catch (err) {
     console.error(err);
