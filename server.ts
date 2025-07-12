@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import { Application, Router } from "https://deno.land/x/oak@v12.5.0/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { Client } from "https://deno.land/x/mysql/mod.ts";
@@ -18,7 +19,7 @@ async function waitForDbReady(retries = 20, delayMs = 2000) {
       await client.execute("SELECT 1");
       console.log("DB is ready!");
       return;
-    } catch (error) {
+    } catch (error: any) {
       console.log(
         `DB not ready yet, retrying in ${delayMs}ms... Error: ${error.message}`,
       );
@@ -213,8 +214,8 @@ router.post("/join-match", async (ctx) => {
     }
 
     // Eerlijke rol verdeling
-    const huntersCount = players.filter((p) => p.role === "hunter").length;
-    const criminalsCount = players.filter((p) => p.role === "criminal").length;
+    const huntersCount = players.filter((p: any) => p.role === "hunter").length;
+    const criminalsCount = players.filter((p: any) => p.role === "criminal").length;
     const role = huntersCount <= criminalsCount ? "hunter" : "criminal";
 
     // Nieuwe token voor speler
@@ -335,7 +336,7 @@ router.post("/leave-match", async (ctx) => {
     );
 
     console.log(token.trim());
-    
+
     if (sessions.length === 0) {
       ctx.response.status = 404;
       ctx.response.body = { error: "session not found" };
