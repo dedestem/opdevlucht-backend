@@ -52,6 +52,7 @@ const createSessionsTableQuery = `
     is_owner BOOLEAN DEFAULT FALSE,
     token VARCHAR(36) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    picture TEXT NOT NULL, 
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
   )
 `;
@@ -89,6 +90,42 @@ function generateToken(): string {
   return crypto.randomUUID();
 }
 
+function GenPlrPic(name: string): string {
+  // Get initials based on the rules
+  const words = name.trim().split(/\s+/);
+  let initials = "";
+
+  if (words.length === 1) {
+    const w = words[0];
+    initials = (w[0] + (w[1] || "")).toUpperCase();
+  } else {
+    initials = (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  }
+
+  // Generate random pastel color for background
+  // Pastel colors are easier on eyes, use HSL with fixed saturation/lightness
+  const hue = Math.floor(Math.random() * 360);
+  const bgColor = `hsl(${hue}, 70%, 80%)`;
+  const textColor = `hsl(${hue}, 70%, 30%)`;
+
+  // SVG size
+  const size = 128;
+
+  // Create SVG string
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${
+    size / 2
+  }" fill="${bgColor}" />
+      <text x="50%" y="50%" dy="0.1em" text-anchor="middle" fill="${textColor}" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="64">${initials}</text>
+    </svg>`.trim();
+
+  // Convert SVG to base64
+  const base64 = btoa(unescape(encodeURIComponent(svg)));
+
+  return `data:image/svg+xml;base64,${base64}`;
+}
+
 async function deleteExpiredMatches() {
   console.log("Running match cleanup...");
 
@@ -102,8 +139,9 @@ async function deleteExpiredMatches() {
     WHERE NOW() > DATE_ADD(created_at, INTERVAL (matchtime + 30) MINUTE)
   `);
 
-
-  console.log(`Deleted ${result.affectedRows} expired matches. And ${plrresult.affectedRows} expired players.`);
+  console.log(
+    `Deleted ${result.affectedRows} expired matches. And ${plrresult.affectedRows} expired players.`,
+  );
   console.log(
     "Next scheduled deletion of expired matches is at: " +
       new Date(Date.now() + 30 * 60 * 1000).toTimeString().slice(0, 5),
@@ -154,11 +192,12 @@ router.post("/create-match", async (ctx) => {
 
     // Maker token
     const token = generateToken();
+    const picture =  GenPlrPic(name);
 
     // Maker toevoegen als owner met rol hunter
     await client.execute(
-      `INSERT INTO sessions (match_id, name, role, is_owner, token) VALUES (?, ?, ?, ?, ?)`,
-      [matchId, name.trim(), "hunter", true, token],
+      `INSERT INTO sessions (match_id, name, role, is_owner, token, picture) VALUES (?, ?, ?, ?, ?, ?)`,
+      [matchId, name.trim(), "hunter", true, token, picture],
     );
 
     ctx.response.status = 200;
@@ -167,6 +206,7 @@ router.post("/create-match", async (ctx) => {
       joincode,
       token,
       role: "hunter",
+      picture,
     };
   } catch (err) {
     console.error(err);
@@ -215,16 +255,19 @@ router.post("/join-match", async (ctx) => {
 
     // Eerlijke rol verdeling
     const huntersCount = players.filter((p: any) => p.role === "hunter").length;
-    const criminalsCount = players.filter((p: any) => p.role === "criminal").length;
+    const criminalsCount = players.filter((p: any) =>
+      p.role === "criminal"
+    ).length;
     const role = huntersCount <= criminalsCount ? "hunter" : "criminal";
 
     // Nieuwe token voor speler
     const token = generateToken();
+    const picture =  GenPlrPic(name);
 
     // Voeg speler toe
     const _insertResult = await client.execute(
-      `INSERT INTO sessions (match_id, name, role, is_owner, token) VALUES (?, ?, ?, ?, ?)`,
-      [match.id, name.trim(), role, false, token],
+      `INSERT INTO sessions (match_id, name, role, is_owner, token, picture) VALUES (?, ?, ?, ?, ?, ?)`,
+      [match.id, name.trim(), role, false, token, picture],
     );
 
     ctx.response.status = 200;
@@ -232,6 +275,7 @@ router.post("/join-match", async (ctx) => {
       role,
       token,
       matchId: match.id,
+      picture,
     };
   } catch (err) {
     console.error(err);
@@ -338,7 +382,7 @@ router.post("/leave-match", async (ctx) => {
     console.log(token.trim());
 
     if (sessions.length === 0) {
-      console.log("Session not found")
+      console.log("Session not found");
       ctx.response.status = 404;
       ctx.response.body = { error: "session not found" };
       return;
