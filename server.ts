@@ -114,11 +114,10 @@ function GenPlrPic(name: string): string {
   // Create SVG string
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-      <circle cx="${size / 2}" cy="${size / 2}" r="${
-    size / 2
-  }" fill="${bgColor}" />
-      <text x="50%" y="50%" dy="0.1em" text-anchor="middle" fill="${textColor}" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="64">${initials}</text>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="${bgColor}" />
+      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="${textColor}" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="64">${initials}</text>
     </svg>`.trim();
+
 
   // Convert SVG to base64
   const base64 = btoa(unescape(encodeURIComponent(svg)));
