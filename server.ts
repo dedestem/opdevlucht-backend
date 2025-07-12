@@ -27,6 +27,23 @@ const createTableQuery = `
   )
 `;
 
+async function waitForDbReady(retries = 10, delayMs = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const connection = await pool.getConnection();
+      connection.release();
+      console.log("DB is ready!");
+      return;
+    } catch {
+      console.log(`DB nog niet ready, probeer opnieuw in ${delayMs}ms...`);
+      await new Promise((res) => setTimeout(res, delayMs));
+    }
+  }
+  throw new Error("DB connectie mislukt na meerdere pogingen");
+}
+
+await waitForDbReady();
+
 const connection = await pool.getConnection();
 await connection.query(createTableQuery);
 connection.release();
