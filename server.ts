@@ -44,7 +44,7 @@ const createMatchesTableQuery = `
     locationinterval INT NOT NULL,
     matchtime INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status VARCHAR(30) NOT NULL,
+    status VARCHAR(30) NOT NULL
   )
 `;
 
