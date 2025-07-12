@@ -14,7 +14,7 @@ services:
   deno-app:
     build: .
     ports:
-      - "8000:8000"
+      - "4500:4500"
     depends_on:
       - db
     environment:
