@@ -19,7 +19,9 @@ async function waitForDbReady(retries = 20, delayMs = 2000) {
       console.log("DB is ready!");
       return;
     } catch (error) {
-      console.log(`DB not ready yet, retrying in ${delayMs}ms... Error: ${error.message}`);
+      console.log(
+        `DB not ready yet, retrying in ${delayMs}ms... Error: ${error.message}`,
+      );
       await new Promise((res) => setTimeout(res, delayMs));
     }
   }
@@ -69,7 +71,10 @@ function generateJoinCode(length = 6) {
 async function generateUniqueJoinCode(): Promise<string> {
   while (true) {
     const code = generateJoinCode();
-    const result = await client.query("SELECT id FROM matches WHERE joincode = ?", [code]);
+    const result = await client.query(
+      "SELECT id FROM matches WHERE joincode = ?",
+      [code],
+    );
     if (result.length === 0) {
       return code;
     }
@@ -86,13 +91,22 @@ function generateToken(): string {
 async function deleteExpiredMatches() {
   console.log("Running match cleanup...");
 
+  const plrresult = await client.execute(`
+    DELETE s FROM sessions s
+    JOIN matches m ON s.match_id = m.id
+    WHERE NOW() > DATE_ADD(m.created_at, INTERVAL (m.matchtime + 30) MINUTE)
+  `);
   const result = await client.execute(`
     DELETE FROM matches
     WHERE NOW() > DATE_ADD(created_at, INTERVAL (matchtime + 30) MINUTE)
   `);
 
-  console.log(`Deleted ${result.affectedRows} expired matches.`);
-  console.log("Next scheduled deletion of expired matches is at: " + new Date(Date.now() + 30 * 60 * 1000).toTimeString().slice(0,5));
+
+  console.log(`Deleted ${result.affectedRows} expired matches. And ${plrresult.affectedRows} expired players.`);
+  console.log(
+    "Next scheduled deletion of expired matches is at: " +
+      new Date(Date.now() + 30 * 60 * 1000).toTimeString().slice(0, 5),
+  );
 }
 
 const app = new Application();
@@ -143,7 +157,7 @@ router.post("/create-match", async (ctx) => {
     // Maker toevoegen als owner met rol hunter
     await client.execute(
       `INSERT INTO sessions (match_id, name, role, is_owner, token) VALUES (?, ?, ?, ?, ?)`,
-      [matchId, name.trim(), 'hunter', true, token],
+      [matchId, name.trim(), "hunter", true, token],
     );
 
     ctx.response.status = 200;
@@ -151,7 +165,7 @@ router.post("/create-match", async (ctx) => {
       id: matchId,
       joincode,
       token,
-      role: 'hunter',
+      role: "hunter",
     };
   } catch (err) {
     console.error(err);
@@ -176,7 +190,10 @@ router.post("/join-match", async (ctx) => {
     }
 
     // Zoek match
-    const matches = await client.query("SELECT * FROM matches WHERE joincode = ?", [joincode.trim()]);
+    const matches = await client.query(
+      "SELECT * FROM matches WHERE joincode = ?",
+      [joincode.trim()],
+    );
     if (matches.length === 0) {
       ctx.response.status = 404;
       ctx.response.body = { error: "match not found" };
@@ -185,7 +202,10 @@ router.post("/join-match", async (ctx) => {
     const match = matches[0];
 
     // Check spelers aantal
-    const players = await client.query("SELECT * FROM sessions WHERE match_id = ?", [match.id]);
+    const players = await client.query(
+      "SELECT * FROM sessions WHERE match_id = ?",
+      [match.id],
+    );
     if (players.length >= match.maxplayers) {
       ctx.response.status = 403;
       ctx.response.body = { error: "match is full" };
@@ -193,9 +213,9 @@ router.post("/join-match", async (ctx) => {
     }
 
     // Eerlijke rol verdeling
-    const huntersCount = players.filter(p => p.role === 'hunter').length;
-    const criminalsCount = players.filter(p => p.role === 'criminal').length;
-    const role = huntersCount <= criminalsCount ? 'hunter' : 'criminal';
+    const huntersCount = players.filter((p) => p.role === "hunter").length;
+    const criminalsCount = players.filter((p) => p.role === "criminal").length;
+    const role = huntersCount <= criminalsCount ? "hunter" : "criminal";
 
     // Nieuwe token voor speler
     const token = generateToken();
@@ -226,7 +246,7 @@ router.post("/change-role", async (ctx) => {
     const body = await ctx.request.body({ type: "json" }).value;
     const { matchId, playerId, newRole, tokenRequester } = body;
 
-    if (!['hunter', 'criminal'].includes(newRole)) {
+    if (!["hunter", "criminal"].includes(newRole)) {
       ctx.response.status = 400;
       ctx.response.body = { error: "invalid role" };
       return;
@@ -245,7 +265,7 @@ router.post("/change-role", async (ctx) => {
     // Check of requester owner is
     const requester = await client.query(
       "SELECT * FROM sessions WHERE token = ? AND match_id = ? AND is_owner = TRUE",
-      [tokenRequester, matchId]
+      [tokenRequester, matchId],
     );
     if (requester.length === 0) {
       ctx.response.status = 403;
@@ -256,7 +276,7 @@ router.post("/change-role", async (ctx) => {
     // Update rol van speler
     const _updateResult = await client.execute(
       "UPDATE sessions SET role = ? WHERE id = ? AND match_id = ?",
-      [newRole, playerId, matchId]
+      [newRole, playerId, matchId],
     );
 
     ctx.response.status = 200;
@@ -277,7 +297,10 @@ router.get("/match-players/:joincode", async (ctx) => {
     return;
   }
 
-  const matches = await client.query("SELECT * FROM matches WHERE joincode = ?", [joincode]);
+  const matches = await client.query(
+    "SELECT * FROM matches WHERE joincode = ?",
+    [joincode],
+  );
   if (matches.length === 0) {
     ctx.response.status = 404;
     ctx.response.body = { error: "match not found" };
@@ -285,7 +308,10 @@ router.get("/match-players/:joincode", async (ctx) => {
   }
 
   const match = matches[0];
-  const players = await client.query("SELECT id, name, role, is_owner FROM sessions WHERE match_id = ?", [match.id]);
+  const players = await client.query(
+    "SELECT id, name, role, is_owner FROM sessions WHERE match_id = ?",
+    [match.id],
+  );
 
   ctx.response.status = 200;
   ctx.response.body = { players };
@@ -339,7 +365,10 @@ router.post("/leave-match", async (ctx) => {
       );
 
       ctx.response.status = 200;
-      ctx.response.body = { success: true, info: "match deleted because no players left" };
+      ctx.response.body = {
+        success: true,
+        info: "match deleted because no players left",
+      };
       return;
     }
 
@@ -360,8 +389,6 @@ router.post("/leave-match", async (ctx) => {
     ctx.response.body = { error: "unknown error" };
   }
 });
-
-
 
 app.use(router.routes());
 app.use(router.allowedMethods());
