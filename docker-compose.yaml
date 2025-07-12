@@ -11,6 +11,8 @@ services:
       - db_data:/var/lib/mysql
     networks:
       - internal
+    dns:
+      - 192.168.1.141
 
   deno-app:
     build: .
@@ -25,6 +27,8 @@ services:
       DB_NAME: opdevlucht_db
     networks:
       - internal
+    dns:
+      - 192.168.1.141
 
   phpmyadmin:
     image: arm64v8/phpmyadmin
@@ -40,6 +44,8 @@ services:
       - db
     networks:
       - internal
+    dns:
+      - 192.168.1.141
 
 volumes:
   db_data:
