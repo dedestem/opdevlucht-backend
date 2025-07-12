@@ -83,6 +83,18 @@ function generateToken(): string {
   return crypto.randomUUID();
 }
 
+async function deleteExpiredMatches() {
+  console.log("Running match cleanup...");
+
+  const result = await client.execute(`
+    DELETE FROM matches
+    WHERE NOW() > DATE_ADD(created_at, INTERVAL (matchtime + 30) MINUTE)
+  `);
+
+  console.log(`Deleted ${result.affectedRows} expired matches.`);
+  console.log("Next scheduled deletion of expired matches is at: " + new Date(Date.now() + 30 * 60 * 1000).toTimeString().slice(0,5));
+}
+
 const app = new Application();
 const router = new Router();
 
@@ -279,7 +291,6 @@ router.get("/match-players/:joincode", async (ctx) => {
   ctx.response.body = { players };
 });
 
-// Leave match endpoint - speler verlaat de match via zijn token
 router.post("/leave-match", async (ctx) => {
   try {
     const body = await ctx.request.body({ type: "json" }).value;
@@ -291,11 +302,12 @@ router.post("/leave-match", async (ctx) => {
       return;
     }
 
-    // Zoek speler sessie
+    // Zoek sessie
     const sessions = await client.query(
       "SELECT * FROM sessions WHERE token = ?",
       [token.trim()],
     );
+
     if (sessions.length === 0) {
       ctx.response.status = 404;
       ctx.response.body = { error: "session not found" };
@@ -304,11 +316,41 @@ router.post("/leave-match", async (ctx) => {
 
     const session = sessions[0];
 
+    // Haal match_id op
+    const matchId = session.match_id;
+
     // Verwijder sessie
     await client.execute(
       "DELETE FROM sessions WHERE id = ?",
       [session.id],
     );
+
+    // Zoek resterende spelers in dezelfde match
+    const remainingSessions = await client.query(
+      "SELECT * FROM sessions WHERE match_id = ? ORDER BY created_at ASC",
+      [matchId],
+    );
+
+    if (remainingSessions.length === 0) {
+      // Verwijder de match zelf als er geen spelers meer zijn
+      await client.execute(
+        "DELETE FROM matches WHERE id = ?",
+        [matchId],
+      );
+
+      ctx.response.status = 200;
+      ctx.response.body = { success: true, info: "match deleted because no players left" };
+      return;
+    }
+
+    // Als de vertrekkende speler de owner was: promote de volgende oudste
+    if (session.is_owner) {
+      const nextOwner = remainingSessions[0];
+      await client.execute(
+        "UPDATE sessions SET is_owner = TRUE WHERE id = ?",
+        [nextOwner.id],
+      );
+    }
 
     ctx.response.status = 200;
     ctx.response.body = { success: true };
@@ -320,8 +362,12 @@ router.post("/leave-match", async (ctx) => {
 });
 
 
+
 app.use(router.routes());
 app.use(router.allowedMethods());
+
+deleteExpiredMatches();
+setInterval(deleteExpiredMatches, 30 * 60 * 1000);
 
 console.log("Server running on http://localhost:4500");
 await app.listen({ port: 4500 });
