@@ -6,4 +6,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["run", "--unstable", "--allow-net", "--allow-env", "server.ts"]
+CMD ["run", "--unstable-npm", "--allow-net", "--allow-env", "server.ts"]

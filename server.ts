@@ -6,10 +6,10 @@ import mysql from "npm:mysql2/promise";
 
 // Maak een MySQL connection pool
 const pool = mysql.createPool({
-  host: Deno.env.get("DB_HOST")
-  user: Deno.env.get("DB_USER")
-  password: Deno.env.get("DB_PASSWORD")
-  database: Deno.env.get("DB_NAME")
+  host: Deno.env.get("DB_HOST"),
+  user: Deno.env.get("DB_USER"),
+  password: Deno.env.get("DB_PASSWORD"),
+  database: Deno.env.get("DB_NAME"),
   port: 3306,
   waitForConnections: true,
   connectionLimit: 10,
