@@ -1,17 +1,22 @@
+// server.ts
+
 import { Application, Router } from "https://deno.land/x/oak@v12.5.0/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
-import { Client } from "https://deno.land/x/mysql@v2.10.2/mod.ts";
+import mysql from "npm:mysql2/promise";
 
-const client = await new Client().connect({
-  hostname: Deno.env.get("DB_HOST") || "localhost",
-  username: Deno.env.get("DB_USER") || "root",
-  password: Deno.env.get("DB_PASSWORD") || "",
-  db: Deno.env.get("DB_NAME") || "test",
+// Maak een MySQL connection pool
+const pool = mysql.createPool({
+  host: Deno.env.get("DB_HOST")
+  user: Deno.env.get("DB_USER")
+  password: Deno.env.get("DB_PASSWORD")
+  database: Deno.env.get("DB_NAME")
   port: 3306,
+  waitForConnections: true,
+  connectionLimit: 10,
 });
 
-// Init database tables als ze niet bestaan
-await client.execute(`
+// Init database tabel als hij niet bestaat
+const createTableQuery = `
   CREATE TABLE IF NOT EXISTS matches (
     id INT PRIMARY KEY AUTO_INCREMENT,
     koppelcode VARCHAR(10) NOT NULL UNIQUE,
@@ -20,9 +25,13 @@ await client.execute(`
     spelDuur INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )
-`);
+`;
 
-// Functie om een unieke koppelcode te maken, bv. 6 letters/cijfers
+const connection = await pool.getConnection();
+await connection.query(createTableQuery);
+connection.release();
+
+// Koppelcode generator
 function generateKoppelcode(length = 6) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
@@ -32,12 +41,14 @@ function generateKoppelcode(length = 6) {
   return result;
 }
 
-// Check of koppelcode uniek is
 async function generateUniqueKoppelcode(): Promise<string> {
   while (true) {
     const code = generateKoppelcode();
-    const result = await client.execute(`SELECT id FROM matches WHERE koppelcode = ?`, [code]);
-    if (result.rows?.length === 0) {
+    const [rows] = await pool.query(
+      `SELECT id FROM matches WHERE koppelcode = ?`,
+      [code],
+    ) as [any[], any];
+    if (rows.length === 0) {
       return code;
     }
   }
@@ -46,27 +57,25 @@ async function generateUniqueKoppelcode(): Promise<string> {
 const app = new Application();
 const router = new Router();
 
-// Enable CORS for all routes and origins
-app.use(oakCors()); // <- This enables CORS with default settings (allow all origins)
+app.use(oakCors());
 
 // Root route
 router.get("/", (ctx) => {
   ctx.response.body = "OK";
 });
 
-// Connectivity check route
+// Connectivity check
 router.get("/connectivitycheck", (ctx) => {
   ctx.response.status = 200;
   ctx.response.body = { status: "OK", timestamp: new Date().toISOString() };
 });
 
+// Create match
 router.post("/create-match", async (ctx) => {
   try {
     const body = await ctx.request.body({ type: "json" }).value;
-
     const { maxAantalSpelers, locatieInterval, spelDuur } = body;
 
-    // Geldig check
     if (
       typeof maxAantalSpelers !== "number" || maxAantalSpelers <= 0 ||
       typeof locatieInterval !== "number" || locatieInterval <= 0 ||
@@ -79,25 +88,20 @@ router.post("/create-match", async (ctx) => {
 
     const koppelcode = await generateUniqueKoppelcode();
 
-    // Insert in DB
-    const result = await client.execute(
+    const [result] = await pool.query(
       `INSERT INTO matches (koppelcode, maxAantalSpelers, locatieInterval, spelDuur) VALUES (?, ?, ?, ?)`,
       [koppelcode, maxAantalSpelers, locatieInterval, spelDuur],
-    );
-
-    const insertId = result.lastInsertId;
-    console.log(result.id)
-    console.log(result.insertId)
-    console.log(result.lastInsertId)
+    ) as [mysql.ResultSetHeader, any];
 
     ctx.response.status = 200;
     ctx.response.body = {
-      id: insertId,
+      id: result.insertId,
       koppelcode,
     };
-  } catch {
+  } catch (err) {
+    console.error(err);
     ctx.response.status = 500;
-    ctx.response.body = { error: "unknown" };
+    ctx.response.body = { error: "unknown error" };
   }
 });
 
