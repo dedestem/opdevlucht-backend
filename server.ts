@@ -354,7 +354,7 @@ router.get("/match-players/:joincode", async (ctx) => {
 
   const match = matches[0];
   const players = await client.query(
-    "SELECT id, name, role, is_owner FROM sessions WHERE match_id = ?",
+    "SELECT id, name, role, is_owner, picture FROM sessions WHERE match_id = ?",
     [match.id],
   );
 
