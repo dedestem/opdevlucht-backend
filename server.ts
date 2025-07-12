@@ -3,6 +3,10 @@ import { Application, Router } from "https://deno.land/x/oak@v12.5.0/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { Client } from "https://deno.land/x/mysql/mod.ts";
 
+// TODO
+// Add last_interacted to match info. To expire based on that.
+// Let players expire based on an alive ping
+
 // Create MySQL client
 const client = await new Client().connect({
   hostname: Deno.env.get("DB_HOST"),
@@ -39,7 +43,8 @@ const createMatchesTableQuery = `
     maxplayers INT NOT NULL,
     locationinterval INT NOT NULL,
     matchtime INT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(30) NOT NULL,
   )
 `;
 
@@ -183,8 +188,8 @@ router.post("/create-match", async (ctx) => {
     const joincode = await generateUniqueJoinCode();
 
     const result = await client.execute(
-      `INSERT INTO matches (joincode, maxplayers, locationinterval, matchtime) VALUES (?, ?, ?, ?)`,
-      [joincode, maxPlayers, locationInterval, matchDuration],
+      `INSERT INTO matches (joincode, maxplayers, locationinterval, matchtime, status) VALUES (?, ?, ?, ?, ?)`,
+      [joincode, maxPlayers, locationInterval, matchDuration, "lobby"],
     );
 
     const matchId = result.lastInsertId;
@@ -430,6 +435,70 @@ router.post("/leave-match", async (ctx) => {
 
     ctx.response.status = 200;
     ctx.response.body = { success: true };
+  } catch (err) {
+    console.error(err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "unknown error" };
+  }
+});
+
+// Endpoint om match info op te halen.
+router.get("/match-status/:joincode", async (ctx) => {
+  const joincode = ctx.params.joincode;
+  if (!joincode) {
+    ctx.response.status = 400;
+    ctx.response.body = { error: "joincode required" };
+    return;
+  }
+
+  const match = await client.query(
+    "SELECT * FROM matches WHERE joincode = ?",
+    [joincode],
+  );
+
+  if (match.length === 0) {
+    ctx.response.status = 404;
+    ctx.response.body = { error: "match not found" };
+    return;
+  }
+
+  ctx.response.status = 200;
+  ctx.response.body = { match };
+});
+
+// Endpoint om match te starten
+// Verwacht JSON body: { token }
+router.post("/start-match", async (ctx) => {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const { matchId, token } = body;
+
+    // Check of requester owner is
+    const requester = await client.query(
+      "SELECT * FROM sessions WHERE token = ? AND match_id = ? AND is_owner = TRUE",
+      [token, matchId],
+    );
+    if (requester.length === 0) {
+      ctx.response.status = 403;
+      ctx.response.body = { error: "not authorized" };
+      return;
+    }
+
+    await client.execute(
+      "UPDATE matches SET status = ? WHERE id = ?",
+      ["starting", matchId],
+    );
+
+    // Respond before due request timeout!
+    ctx.response.status = 200;
+    ctx.response.body = { status: "ok" };
+
+    setTimeout(async () => {
+      await client.execute(
+        "UPDATE matches SET status = ? WHERE id = ?",
+        ["started", matchId],
+      );
+    }, 20 * 1000);
   } catch (err) {
     console.error(err);
     ctx.response.status = 500;
