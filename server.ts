@@ -473,7 +473,7 @@ router.post("/start-match", async (ctx) => {
     const body = await ctx.request.body({ type: "json" }).value;
     const { matchId, token } = body;
 
-    // Check of requester owner is
+    // Check if requester is owner
     const requester = await client.query(
       "SELECT * FROM sessions WHERE token = ? AND match_id = ? AND is_owner = TRUE",
       [token, matchId],
@@ -484,27 +484,49 @@ router.post("/start-match", async (ctx) => {
       return;
     }
 
+    // Check if there's at least 1 hunter and 1 criminal
+    const roles = await client.query(
+      `SELECT role, COUNT(*) as count 
+       FROM sessions 
+       WHERE match_id = ? 
+       GROUP BY role`,
+      [matchId],
+    );
+
+    const hasHunter = roles.some((r: any) => r.role === "hunter" && r.count > 0);
+    const hasCriminal = roles.some((r: any) => r.role === "criminal" && r.count > 0);
+
+    if (!hasHunter || !hasCriminal) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "At least 1 hunter and 1 criminal are required to start the match." };
+      return;
+    }
+
+    // Update match status to "starting"
     await client.execute(
       "UPDATE matches SET status = ? WHERE id = ?",
       ["starting", matchId],
     );
 
-    // Respond before due request timeout!
+    // Respond immediately to avoid timeout
     ctx.response.status = 200;
     ctx.response.body = { status: "ok" };
 
+    // Actually start the match after a delay
     setTimeout(async () => {
       await client.execute(
         "UPDATE matches SET status = ? WHERE id = ?",
         ["started", matchId],
       );
     }, 20 * 1000);
+
   } catch (err) {
     console.error(err);
     ctx.response.status = 500;
     ctx.response.body = { error: "unknown error" };
   }
 });
+
 
 app.use(router.routes());
 app.use(router.allowedMethods());
