@@ -45,7 +45,7 @@ const createMatchesTableQuery = `
     matchtime INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(30) NOT NULL,
-    starts_at TIMESTAMP NULL
+    starts_at VARCHAR(30) NULL
   )
 `;
 
@@ -504,7 +504,6 @@ router.post("/start-match", async (ctx) => {
       return;
     }
 
-    // Update match status to "starting"
     const startsAt = new Date(Date.now() + 25000); // 25 sec in de toekomst
 
     await client.execute(
