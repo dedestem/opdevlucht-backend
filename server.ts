@@ -513,6 +513,14 @@ router.post("/start-match", async (ctx) => {
     ctx.response.status = 200;
     ctx.response.body = { status: "ok" };
 
+    // Actually start the match after a delay
+    setTimeout(async () => {
+      await client.execute(
+        "UPDATE matches SET status = ? WHERE id = ?",
+        ["started", matchId],
+      );
+    }, 25 * 1000);
+
   } catch (err) {
     console.error(err);
     ctx.response.status = 500;
