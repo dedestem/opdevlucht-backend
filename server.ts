@@ -2,7 +2,6 @@
 import { Application, Router } from "https://deno.land/x/oak@v12.5.0/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { Client } from "https://deno.land/x/mysql/mod.ts";
-import { match } from "https://deno.land/x/path_to_regexp@v6.2.1/index.ts";
 
 // TODO
 // Add last_interacted to match info. To expire based on that.
@@ -45,7 +44,8 @@ const createMatchesTableQuery = `
     locationinterval INT NOT NULL,
     matchtime INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    status VARCHAR(30) NOT NULL
+    status VARCHAR(30) NOT NULL,
+    starts_at TIMESTAMP NULL
   )
 `;
 
@@ -448,7 +448,7 @@ router.get("/match-status/:joincode", async (ctx) => {
   const joincode = ctx.params.joincode;
   if (!joincode) {
     ctx.response.status = 400;
-    ctx.response.body = { error: "joincode required" };
+    ctx.response.body = { error: "jomatch-statusincode required" };
     return;
   }
 
@@ -463,8 +463,9 @@ router.get("/match-status/:joincode", async (ctx) => {
     return;
   }
 
+  const now = new Date().toISOString();
   ctx.response.status = 200;
-  ctx.response.body = { match };
+  ctx.response.body = { match, now };
 });
 
 // Endpoint om match te starten
@@ -504,10 +505,13 @@ router.post("/start-match", async (ctx) => {
     }
 
     // Update match status to "starting"
+    const startsAt = new Date(Date.now() + 25000); // 25 sec in de toekomst
+
     await client.execute(
-      "UPDATE matches SET status = ? WHERE id = ?",
-      ["starting", matchId],
+      "UPDATE matches SET status = ?, starts_at = ? WHERE id = ?",
+      ["starting", startsAt.toISOString(), matchId],
     );
+
 
     // Respond immediately to avoid timeout
     console.log("Starting match: " + matchId)
