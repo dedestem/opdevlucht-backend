@@ -515,6 +515,7 @@ router.post("/start-match", async (ctx) => {
 
     // Actually start the match after a delay
     setTimeout(async () => {
+      console.log("Updating state!")
       await client.execute(
         "UPDATE matches SET status = ? WHERE id = ?",
         ["started", matchId],
