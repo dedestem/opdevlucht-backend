@@ -510,6 +510,7 @@ router.post("/start-match", async (ctx) => {
     );
 
     // Respond immediately to avoid timeout
+    console.log("Starting match: " + matchId)
     ctx.response.status = 200;
     ctx.response.body = { status: "ok" };
 
