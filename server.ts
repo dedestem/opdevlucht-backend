@@ -2,6 +2,7 @@
 import { Application, Router } from "https://deno.land/x/oak@v12.5.0/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { Client } from "https://deno.land/x/mysql/mod.ts";
+import { match } from "https://deno.land/x/path_to_regexp@v6.2.1/index.ts";
 
 // TODO
 // Add last_interacted to match info. To expire based on that.
@@ -314,7 +315,7 @@ router.post("/change-role", async (ctx) => {
     // Check of requester owner is
     const requester = await client.query(
       "SELECT * FROM sessions WHERE token = ? AND match_id = ? AND is_owner = TRUE",
-      [matchId, token],
+      [token, matchId],
     );
     if (requester.length === 0) {
       ctx.response.status = 403;
@@ -511,14 +512,6 @@ router.post("/start-match", async (ctx) => {
     // Respond immediately to avoid timeout
     ctx.response.status = 200;
     ctx.response.body = { status: "ok" };
-
-    // Actually start the match after a delay
-    setTimeout(async () => {
-      await client.execute(
-        "UPDATE matches SET status = ? WHERE id = ?",
-        ["started", matchId],
-      );
-    }, 20 * 1000);
 
   } catch (err) {
     console.error(err);
