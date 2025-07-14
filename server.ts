@@ -45,7 +45,8 @@ const createMatchesTableQuery = `
     matchtime INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(30) NOT NULL,
-    starts_at VARCHAR(30) NULL
+    starts_at VARCHAR(30) NULL,
+    current_iteration INT DEFAULT 0
   )
 `;
 
@@ -63,8 +64,21 @@ const createSessionsTableQuery = `
   )
 `;
 
+const createLocationsTableQuery = `
+  CREATE TABLE IF NOT EXISTS locations (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    session_id INT NOT NULL,
+    lat DOUBLE NOT NULL,
+    lon DOUBLE NOT NULL,
+    iteration INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+  );
+`;
+
 await client.execute(createMatchesTableQuery);
 await client.execute(createSessionsTableQuery);
+await client.execute(createLocationsTableQuery);
 
 // Join code generator
 function generateJoinCode(length = 6) {
@@ -120,10 +134,11 @@ function GenPlrPic(name: string): string {
   // Create SVG string
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-      <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="${bgColor}" />
+      <circle cx="${size / 2}" cy="${size / 2}" r="${
+    size / 2
+  }" fill="${bgColor}" />
       <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="${textColor}" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="64">${initials}</text>
     </svg>`.trim();
-
 
   // Convert SVG to base64
   const base64 = btoa(unescape(encodeURIComponent(svg)));
@@ -197,7 +212,7 @@ router.post("/create-match", async (ctx) => {
 
     // Maker token
     const token = generateToken();
-    const picture =  GenPlrPic(name);
+    const picture = GenPlrPic(name);
 
     // Maker toevoegen als owner met rol hunter
     await client.execute(
@@ -267,7 +282,7 @@ router.post("/join-match", async (ctx) => {
 
     // Nieuwe token voor speler
     const token = generateToken();
-    const picture =  GenPlrPic(name);
+    const picture = GenPlrPic(name);
 
     // Voeg speler toe
     const _insertResult = await client.execute(
@@ -493,12 +508,19 @@ router.post("/start-match", async (ctx) => {
       [matchId],
     );
 
-    const hasHunter = roles.some((r: any) => r.role === "hunter" && r.count > 0);
-    const hasCriminal = roles.some((r: any) => r.role === "criminal" && r.count > 0);
+    const hasHunter = roles.some((r: any) =>
+      r.role === "hunter" && r.count > 0
+    );
+    const hasCriminal = roles.some((r: any) =>
+      r.role === "criminal" && r.count > 0
+    );
 
     if (!hasHunter || !hasCriminal) {
       ctx.response.status = 400;
-      ctx.response.body = { error: "At least 1 hunter and 1 criminal are required to start the match." };
+      ctx.response.body = {
+        error:
+          "At least 1 hunter and 1 criminal are required to start the match.",
+      };
       return;
     }
 
@@ -509,21 +531,202 @@ router.post("/start-match", async (ctx) => {
       ["starting", startsAt.toISOString(), matchId],
     );
 
-
     // Respond immediately to avoid timeout
-    console.log("Starting match: " + matchId)
+    console.log("Starting match: " + matchId);
     ctx.response.status = 200;
     ctx.response.body = { status: "ok" };
 
     // Actually start the match after a delay
     setTimeout(async () => {
-      console.log("Started match: " + matchId)
+      console.log("Started match: " + matchId);
       await client.execute(
         "UPDATE matches SET status = ? WHERE id = ?",
         ["started", matchId],
       );
     }, 25 * 1000);
+  } catch (err) {
+    console.error(err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "unknown error" };
+  }
+});
 
+router.post("/send-location", async (ctx) => {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const { token, lat, lon } = body;
+
+    if (
+      typeof token !== "string" ||
+      typeof lat !== "number" ||
+      typeof lon !== "number"
+    ) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "invalid input" };
+      return;
+    }
+
+    // Zoek criminal sessie
+    const sessions = await client.query(
+      "SELECT * FROM sessions WHERE token = ? AND role = 'criminal'",
+      [token.trim()],
+    );
+
+    if (sessions.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "criminal session not found" };
+      return;
+    }
+
+    const session = sessions[0];
+
+    // Haal match info + current_iteration
+    const matches = await client.query(
+      "SELECT * FROM matches WHERE id = ?",
+      [session.match_id],
+    );
+
+    if (matches.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "match not found" };
+      return;
+    }
+
+    const match = matches[0];
+    const currentIteration = match.current_iteration || 0;
+
+    // Haal laatste iteration van deze criminal
+    const latestLoc = await client.query(
+      "SELECT iteration FROM locations WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
+      [session.id],
+    );
+
+    const lastIteration = latestLoc.length > 0 ? latestLoc[0].iteration : 0;
+
+    if (lastIteration === currentIteration) {
+      // Criminal heeft al geüpload → overschrijf/actualiseer
+      await client.execute(
+        "UPDATE locations SET lat = ?, lon = ?, created_at = CURRENT_TIMESTAMP WHERE session_id = ? AND iteration = ?",
+        [lat, lon, session.id, currentIteration],
+      );
+    } else if (lastIteration < currentIteration) {
+      // Nieuwe locatie entry voor huidige iteration
+      await client.execute(
+        "INSERT INTO locations (session_id, lat, lon, iteration) VALUES (?, ?, ?, ?)",
+        [session.id, lat, lon, currentIteration],
+      );
+    } else {
+      // Criminal mag nooit een hogere iteration pushen dan match zegt
+      ctx.response.status = 400;
+      ctx.response.body = { error: "invalid iteration" };
+      return;
+    }
+
+    // Check of ALLE criminals nu geüpload hebben voor deze iteration
+    const criminals = await client.query(
+      "SELECT id FROM sessions WHERE match_id = ? AND role = 'criminal'",
+      [session.match_id],
+    );
+
+    let allUploaded = true;
+
+    for (const criminal of criminals) {
+      const loc = await client.query(
+        "SELECT id FROM locations WHERE session_id = ? AND iteration = ?",
+        [criminal.id, currentIteration],
+      );
+      if (loc.length === 0) {
+        allUploaded = false;
+        break;
+      }
+    }
+
+    if (allUploaded) {
+      await client.execute(
+        "UPDATE matches SET current_iteration = ? WHERE id = ?",
+        [currentIteration + 1, session.match_id],
+      );
+    }
+
+    ctx.response.status = 200;
+    ctx.response.body = {
+      success: true,
+      currentIteration: currentIteration,
+      allUploaded: allUploaded,
+    };
+  } catch (err) {
+    console.error(err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "unknown error" };
+  }
+});
+
+
+router.get("/get-criminals-locations", async (ctx) => {
+  try {
+    const url = new URL(ctx.request.url);
+    const token = url.searchParams.get("token");
+
+    if (!token || token.trim() === "") {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "invalid token" };
+      return;
+    }
+
+    // Vind hunter sessie
+    const sessions = await client.query(
+      "SELECT * FROM sessions WHERE token = ? AND role = 'hunter'",
+      [token.trim()],
+    );
+
+    if (sessions.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "hunter session not found" };
+      return;
+    }
+
+    const hunterSession = sessions[0];
+    const matchId = hunterSession.match_id;
+
+    // Haal globale iteration
+    const matches = await client.query(
+      "SELECT current_iteration FROM matches WHERE id = ?",
+      [matchId],
+    );
+
+    const currentIteration = matches[0]?.current_iteration || 0;
+
+    // Zoek alle criminals
+    const criminals = await client.query(
+      "SELECT id, name FROM sessions WHERE match_id = ? AND role = 'criminal'",
+      [matchId],
+    );
+
+    const locations: Record<
+      string,
+      { lat: number; lon: number; iteration: number }
+    > = {};
+
+    for (const criminal of criminals) {
+      const loc = await client.query(
+        "SELECT lat, lon, iteration FROM locations WHERE session_id = ? ORDER BY created_at DESC LIMIT 1",
+        [criminal.id],
+      );
+
+      if (loc.length > 0) {
+        locations[criminal.name] = {
+          lat: loc[0].lat,
+          lon: loc[0].lon,
+          iteration: loc[0].iteration,
+        };
+      }
+    }
+
+    ctx.response.status = 200;
+    ctx.response.body = {
+      NewestIteration: currentIteration,
+      locations,
+    };
   } catch (err) {
     console.error(err);
     ctx.response.status = 500;
