@@ -566,6 +566,10 @@ router.post("/send-location", async (ctx) => {
       return;
     }
 
+    console.log("token: " + token);
+    console.log("lat: " + lat);
+    console.log("lon: " + lon);
+
     // Zoek criminal sessie
     const sessions = await client.query(
       "SELECT * FROM sessions WHERE token = ? AND role = 'criminal'",
@@ -573,6 +577,7 @@ router.post("/send-location", async (ctx) => {
     );
 
     if (sessions.length === 0) {
+      console.warn("No criminal found with that token! ")
       ctx.response.status = 404;
       ctx.response.body = { error: "criminal session not found" };
       return;
@@ -589,6 +594,7 @@ router.post("/send-location", async (ctx) => {
     if (matches.length === 0) {
       ctx.response.status = 404;
       ctx.response.body = { error: "match not found" };
+      console.warn("No match found with that token! ")
       return;
     }
 
@@ -601,6 +607,9 @@ router.post("/send-location", async (ctx) => {
       [session.id],
     );
 
+    console.log("Latestloc:");
+    console.log(latestLoc);
+    
     const lastIteration = latestLoc.length > 0 ? latestLoc[0].iteration : 0;
 
     if (lastIteration === currentIteration) {
