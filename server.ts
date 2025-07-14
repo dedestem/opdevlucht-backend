@@ -566,9 +566,8 @@ router.post("/send-location", async (ctx) => {
       return;
     }
 
-    console.log("token:", token);
-    console.log("lat:", lat);
-    console.log("lon:", lon);
+    // Start transaction
+    await client.execute("START TRANSACTION");
 
     // Zoek criminal sessie
     const sessions = await client.query(
@@ -577,7 +576,7 @@ router.post("/send-location", async (ctx) => {
     );
 
     if (sessions.length === 0) {
-      console.warn("No criminal found with that token!");
+      await client.execute("ROLLBACK");
       ctx.response.status = 404;
       ctx.response.body = { error: "criminal session not found" };
       return;
@@ -592,7 +591,7 @@ router.post("/send-location", async (ctx) => {
     );
 
     if (matches.length === 0) {
-      console.warn("No match found for that session!");
+      await client.execute("ROLLBACK");
       ctx.response.status = 404;
       ctx.response.body = { error: "match not found" };
       return;
@@ -607,34 +606,28 @@ router.post("/send-location", async (ctx) => {
       [session.id],
     );
 
-    console.log("Latestloc:", latestLoc);
-
     const lastIteration = latestLoc.length > 0 ? latestLoc[0].iteration : null;
 
     if (lastIteration === null) {
       // Geen locatie nog → INSERT eerste
-      console.log("No previous location found → INSERTING new.");
       await client.execute(
         "INSERT INTO locations (session_id, lat, lon, iteration) VALUES (?, ?, ?, ?)",
         [session.id, lat, lon, currentIteration],
       );
     } else if (lastIteration === currentIteration) {
       // UPDATE huidige
-      console.log("Existing location found for this iteration → UPDATING.");
       await client.execute(
         "UPDATE locations SET lat = ?, lon = ?, created_at = CURRENT_TIMESTAMP WHERE session_id = ? AND iteration = ?",
         [lat, lon, session.id, currentIteration],
       );
     } else if (lastIteration < currentIteration) {
       // Nieuwe iteration → INSERT
-      console.log("Older iteration found → INSERTING new for current.");
       await client.execute(
         "INSERT INTO locations (session_id, lat, lon, iteration) VALUES (?, ?, ?, ?)",
         [session.id, lat, lon, currentIteration],
       );
     } else {
-      // Mag niet hoger zijn
-      console.warn("Invalid iteration! Last:", lastIteration, "Current:", currentIteration);
+      await client.execute("ROLLBACK");
       ctx.response.status = 400;
       ctx.response.body = { error: "invalid iteration" };
       return;
@@ -659,13 +652,16 @@ router.post("/send-location", async (ctx) => {
       }
     }
 
+    // Als alle criminelen geüpload hebben, update iteration
     if (allUploaded) {
-      console.log("All criminals uploaded → incrementing iteration.");
       await client.execute(
         "UPDATE matches SET current_iteration = ? WHERE id = ?",
         [currentIteration + 1, session.match_id],
       );
     }
+
+    // Commit de hele transaction
+    await client.execute("COMMIT");
 
     ctx.response.status = 200;
     ctx.response.body = {
@@ -675,12 +671,11 @@ router.post("/send-location", async (ctx) => {
     };
   } catch (err) {
     console.error(err);
+    await client.execute("ROLLBACK");
     ctx.response.status = 500;
     ctx.response.body = { error: "unknown error" };
   }
 });
-
-
 
 router.get("/get-criminals-locations", async (ctx) => {
   try {
@@ -753,7 +748,6 @@ router.get("/get-criminals-locations", async (ctx) => {
     ctx.response.body = { error: "unknown error" };
   }
 });
-
 
 app.use(router.routes());
 app.use(router.allowedMethods());
