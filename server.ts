@@ -353,7 +353,7 @@ router.post("/change-role", async (ctx) => {
   }
 });
 
-// Endpoint om spelerslijst op te halen per match (naam, rol, is_owner)
+// Endpoint om spelerslijst op te halen per match
 router.get("/match-players/:joincode", async (ctx) => {
   const joincode = ctx.params.joincode;
   if (!joincode) {
