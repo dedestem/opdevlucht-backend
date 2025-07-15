@@ -60,7 +60,7 @@ const createSessionsTableQuery = `
     token VARCHAR(36) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     picture TEXT NOT NULL, 
-    last_interacted: TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_interacted TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
   )
 `;
