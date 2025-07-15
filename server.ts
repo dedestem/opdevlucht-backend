@@ -60,6 +60,7 @@ const createSessionsTableQuery = `
     token VARCHAR(36) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     picture TEXT NOT NULL, 
+    last_interacted: TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
   )
 `;
@@ -161,6 +162,41 @@ async function deleteExpiredMatches() {
     "Next scheduled deletion of expired matches is at: " +
       new Date(Date.now() + 30 * 60 * 1000).toTimeString().slice(0, 5),
   );
+}
+
+async function deleteInactiveSessions() {
+  const deleteQuery = `
+    DELETE s FROM sessions s
+    JOIN matches m ON s.match_id = m.id
+    WHERE m.status = 'started'
+      AND s.last_interacted < NOW() - INTERVAL 105 SECOND;
+  `;
+
+  const result = await client.execute(deleteQuery);
+
+  if ( result.affectedRows && result.affectedRows > 0) {
+    console.log(`Deleted ${result.affectedRows} inactive sessions`);
+  }
+}
+
+async function updateLastInteracted(identifier: { id?: number; token?: string }) {
+  if (!identifier.id && !identifier.token) {
+    throw new Error("Je moet een id of token meegeven.");
+  }
+
+  let query = "";
+  let params: (number | string)[] = [];
+
+  if (identifier.id) {
+    query = "UPDATE sessions SET last_interacted = NOW() WHERE id = ?";
+    params = [identifier.id];
+  } else if (identifier.token) {
+    query = "UPDATE sessions SET last_interacted = NOW() WHERE token = ?";
+    params = [identifier.token];
+  }
+
+  const result = await client.execute(query, params);
+  console.log(`Updated ${result.affectedRows} session(s) last_interacted timestamp.`);
 }
 
 const app = new Application();
@@ -519,6 +555,16 @@ router.post("/start-match", async (ctx) => {
       return;
     }
 
+    // Update last_interacted voor elke sessie in de match
+    const sessions = await client.query(
+      "SELECT id FROM sessions WHERE match_id = ?",
+      [matchId]
+    );
+
+    for (const session of sessions) {
+      await updateLastInteracted({ id: session.id });
+    }
+
     const startsAt = new Date(Date.now() + 25000); // 25 sec in de toekomst
 
     await client.execute(
@@ -539,6 +585,32 @@ router.post("/start-match", async (ctx) => {
         ["started", matchId],
       );
     }, 25 * 1000);
+  } catch (err) {
+    console.error(err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "unknown error" };
+  }
+});
+
+router.post("/keep-alive", async (ctx) => {
+  try {
+      const body = await ctx.request.body({ type: "json" }).value;
+      const { token } = body;
+
+      const requester = await client.query(
+        "SELECT * FROM sessions WHERE token = ?",
+        [token],
+      );
+      if (requester.length === 0) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "no session found!" };
+        return;
+      }
+
+      updateLastInteracted({token: token});
+
+      ctx.response.status = 200;
+      ctx.response.body = { ok: true };
   } catch (err) {
     console.error(err);
     ctx.response.status = 500;
@@ -725,6 +797,9 @@ router.post("/send-location", async (ctx) => {
     // Commit de hele transaction
     await client.execute("COMMIT");
 
+
+    updateLastInteracted({token: token});
+
     ctx.response.status = 200;
     ctx.response.body = {
       success: true,
@@ -799,6 +874,8 @@ router.get("/get-criminals-locations", async (ctx) => {
       }
     }
 
+    updateLastInteracted({token: token});
+
     ctx.response.status = 200;
     ctx.response.body = {
       NewestIteration: currentIteration,
@@ -816,6 +893,7 @@ app.use(router.allowedMethods());
 
 deleteExpiredMatches();
 setInterval(deleteExpiredMatches, 30 * 60 * 1000);
+setInterval(deleteInactiveSessions, 30 * 1000);
 
 console.log("Server running on http://localhost:4500");
 await app.listen({ port: 4500 });
