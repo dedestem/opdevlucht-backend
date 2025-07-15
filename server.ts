@@ -149,18 +149,14 @@ function GenPlrPic(name: string): string {
 async function deleteExpiredMatches() {
   console.log("Running match cleanup...");
 
-  const plrresult = await client.execute(`
-    DELETE s FROM sessions s
-    JOIN matches m ON s.match_id = m.id
-    WHERE NOW() > DATE_ADD(m.created_at, INTERVAL (m.matchtime + 30) MINUTE)
-  `);
+
   const result = await client.execute(`
     DELETE FROM matches
     WHERE NOW() > DATE_ADD(created_at, INTERVAL (matchtime + 30) MINUTE)
   `);
 
   console.log(
-    `Deleted ${result.affectedRows} expired matches. And ${plrresult.affectedRows} expired players.`,
+    `Deleted ${result.affectedRows} expired matches.`,
   );
   console.log(
     "Next scheduled deletion of expired matches is at: " +
