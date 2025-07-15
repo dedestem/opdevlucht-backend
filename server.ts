@@ -174,12 +174,14 @@ async function deleteInactiveSessions() {
 
   const result = await client.execute(deleteQuery);
 
-  if ( result.affectedRows && result.affectedRows > 0) {
+  if (result.affectedRows && result.affectedRows > 0) {
     console.log(`Deleted ${result.affectedRows} inactive sessions`);
   }
 }
 
-async function updateLastInteracted(identifier: { id?: number; token?: string }) {
+async function updateLastInteracted(
+  identifier: { id?: number; token?: string },
+) {
   if (!identifier.id && !identifier.token) {
     throw new Error("Je moet een id of token meegeven.");
   }
@@ -195,8 +197,12 @@ async function updateLastInteracted(identifier: { id?: number; token?: string })
     params = [identifier.token];
   }
 
-  const result = await client.execute(query, params);
-  console.log(`Updated ${result.affectedRows} session(s) last_interacted timestamp.`);
+  await client.execute(query, params);
+  console.log(
+    "Last interacted geupdate voor: " +
+      (identifier.id ?? identifier.token) +
+      ".",
+  );
 }
 
 const app = new Application();
@@ -558,7 +564,7 @@ router.post("/start-match", async (ctx) => {
     // Update last_interacted voor elke sessie in de match
     const sessions = await client.query(
       "SELECT id FROM sessions WHERE match_id = ?",
-      [matchId]
+      [matchId],
     );
 
     for (const session of sessions) {
@@ -594,23 +600,23 @@ router.post("/start-match", async (ctx) => {
 
 router.post("/keep-alive", async (ctx) => {
   try {
-      const body = await ctx.request.body({ type: "json" }).value;
-      const { token } = body;
+    const body = await ctx.request.body({ type: "json" }).value;
+    const { token } = body;
 
-      const requester = await client.query(
-        "SELECT * FROM sessions WHERE token = ?",
-        [token],
-      );
-      if (requester.length === 0) {
-        ctx.response.status = 404;
-        ctx.response.body = { error: "no session found!" };
-        return;
-      }
+    const requester = await client.query(
+      "SELECT * FROM sessions WHERE token = ?",
+      [token],
+    );
+    if (requester.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "no session found!" };
+      return;
+    }
 
-      updateLastInteracted({token: token});
+    updateLastInteracted({ token: token });
 
-      ctx.response.status = 200;
-      ctx.response.body = { ok: true };
+    ctx.response.status = 200;
+    ctx.response.body = { ok: true };
   } catch (err) {
     console.error(err);
     ctx.response.status = 500;
@@ -797,8 +803,7 @@ router.post("/send-location", async (ctx) => {
     // Commit de hele transaction
     await client.execute("COMMIT");
 
-
-    updateLastInteracted({token: token});
+    updateLastInteracted({ token: token });
 
     ctx.response.status = 200;
     ctx.response.body = {
@@ -874,7 +879,7 @@ router.get("/get-criminals-locations", async (ctx) => {
       }
     }
 
-    updateLastInteracted({token: token});
+    updateLastInteracted({ token: token });
 
     ctx.response.status = 200;
     ctx.response.body = {
