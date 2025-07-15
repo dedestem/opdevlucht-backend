@@ -608,6 +608,7 @@ router.post("/keep-alive", async (ctx) => {
       [token],
     );
     if (requester.length === 0) {
+      console.log("match not found in keep alive")
       ctx.response.status = 404;
       ctx.response.body = { error: "no session found!" };
       return;
