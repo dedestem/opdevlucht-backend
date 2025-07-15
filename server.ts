@@ -149,7 +149,6 @@ function GenPlrPic(name: string): string {
 async function deleteExpiredMatches() {
   console.log("Running match cleanup...");
 
-
   const result = await client.execute(`
     DELETE FROM matches
     WHERE NOW() > DATE_ADD(created_at, INTERVAL (matchtime + 30) MINUTE)
@@ -603,6 +602,73 @@ router.post("/send-location", async (ctx) => {
     );
 
     const lastIteration = latestLoc.length > 0 ? latestLoc[0].iteration : null;
+
+    // Hier de nieuwe check voor 2+ iteraties achterstand
+    if (lastIteration !== null && lastIteration < currentIteration - 1) {
+      // Zoek sessie
+      const sessions = await client.query(
+        "SELECT * FROM sessions WHERE token = ?",
+        [token.trim()],
+      );
+
+      if (sessions.length === 0) {
+        console.log("Session not found");
+        ctx.response.status = 404;
+        ctx.response.body = { error: "session not found" };
+        return;
+      }
+
+      const session = sessions[0];
+
+      console.log(
+        `Criminal with session id ${session.id} is 2 or more iterations behind.`,
+      );
+
+      // Haal match_id op
+      const matchId = session.match_id;
+
+      // Verwijder sessie
+      await client.execute(
+        "DELETE FROM sessions WHERE id = ?",
+        [session.id],
+      );
+
+      // Zoek resterende spelers in dezelfde match
+      const remainingSessions = await client.query(
+        "SELECT * FROM sessions WHERE match_id = ? ORDER BY created_at ASC",
+        [matchId],
+      );
+
+      if (remainingSessions.length === 0) {
+        // Verwijder de match zelf als er geen spelers meer zijn
+        await client.execute(
+          "DELETE FROM matches WHERE id = ?",
+          [matchId],
+        );
+
+        ctx.response.status = 404;
+        ctx.response.body = {
+          success: true,
+          info: "criminal too far behind in iterations",
+          extra: "Match deleted no players left",
+        };
+        return;
+      }
+
+      // Als de vertrekkende speler de owner was: promote de volgende oudste
+      if (session.is_owner) {
+        const nextOwner = remainingSessions[0];
+        await client.execute(
+          "UPDATE sessions SET is_owner = TRUE WHERE id = ?",
+          [nextOwner.id],
+        );
+      }
+
+      await client.execute("ROLLBACK");
+      ctx.response.status = 404;
+      ctx.response.body = { error: "criminal too far behind in iterations" };
+      return;
+    }
 
     if (lastIteration === null) {
       // Geen locatie nog → INSERT eerste
