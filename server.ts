@@ -165,11 +165,17 @@ async function deleteExpiredMatches() {
 }
 
 async function deleteInactiveSessions() {
+  //const deleteQuery = `
+  //  DELETE s FROM sessions s
+  //  JOIN matches m ON s.match_id = m.id
+  //  WHERE m.status = 'started'
+  //    AND s.last_interacted < NOW() - INTERVAL 105 SECOND;
+  //`;
+
   const deleteQuery = `
     DELETE s FROM sessions s
     JOIN matches m ON s.match_id = m.id
-    WHERE m.status = 'started'
-      AND s.last_interacted < NOW() - INTERVAL 105 SECOND;
+    WHERE s.last_interacted < NOW() - INTERVAL 105 SECOND;
   `;
 
   const result = await client.execute(deleteQuery);
@@ -608,7 +614,7 @@ router.post("/keep-alive", async (ctx) => {
       [token],
     );
     if (requester.length === 0) {
-      console.log("match not found in keep alive")
+      console.log("token not found in keep alive")
       ctx.response.status = 404;
       ctx.response.body = { error: "no session found!" };
       return;
