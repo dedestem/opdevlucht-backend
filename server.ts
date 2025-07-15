@@ -178,7 +178,7 @@ JOIN matches m ON s.match_id = m.id
 WHERE (
   (m.status = 'started' AND s.last_interacted < NOW() - INTERVAL 65 SECOND)
   OR
-  (m.status = 'lobby' AND s.last_interacted < NOW() - INTERVAL 35 SECOND)
+  (m.status = 'lobby' AND s.last_interacted < NOW() - INTERVAL 15 SECOND)
 );
 
   `;
@@ -910,7 +910,7 @@ app.use(router.allowedMethods());
 
 deleteExpiredMatches();
 setInterval(deleteExpiredMatches, 30 * 60 * 1000);
-setInterval(deleteInactiveSessions, 15 * 1000);
+setInterval(deleteInactiveSessions, 10 * 1000);
 
 console.log("Server running on http://localhost:4500");
 await app.listen({ port: 4500 });
