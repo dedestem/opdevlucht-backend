@@ -45,7 +45,7 @@ const createMatchesTableQuery = `
     matchtime INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(30) NOT NULL,
-    starts_at VARCHAR(30) NULL,
+    started_at VARCHAR(30) NULL,
     current_iteration INT DEFAULT 0
   )
 `;
@@ -527,7 +527,7 @@ router.post("/start-match", async (ctx) => {
     const startsAt = new Date(Date.now() + 25000); // 25 sec in de toekomst
 
     await client.execute(
-      "UPDATE matches SET status = ?, starts_at = ? WHERE id = ?",
+      "UPDATE matches SET status = ?, started_at = ? WHERE id = ?",
       ["starting", startsAt.toISOString(), matchId],
     );
 
