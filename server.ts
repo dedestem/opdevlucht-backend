@@ -175,7 +175,7 @@ async function deleteInactiveSessions() {
   const deleteQuery = `
     DELETE s FROM sessions s
     JOIN matches m ON s.match_id = m.id
-    WHERE s.last_interacted < NOW() - INTERVAL 105 SECOND;
+    WHERE s.last_interacted < NOW() - INTERVAL 65 SECOND;
   `;
 
   const result = await client.execute(deleteQuery);
