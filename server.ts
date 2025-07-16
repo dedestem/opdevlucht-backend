@@ -357,7 +357,7 @@ router.post("/join-match", async (ctx) => {
 
     // Voeg speler toe
     const _insertResult = await client.execute(
-      `INSERT INTO sessions (match_id, name, role, is_owner, token, picture, arrestcode) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO sessions (match_id, name, role, is_owner, token, picture, arrest_code) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [match.id, name.trim(), role, false, token, picture, arrestcode],
     );
 
