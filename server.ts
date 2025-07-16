@@ -353,7 +353,7 @@ router.post("/join-match", async (ctx) => {
     // Nieuwe token voor speler
     const token = generateToken();
     const picture = GenPlrPic(name);
-    const arrestcode = generateUniqueArrestCode();
+    const arrestcode = await generateUniqueArrestCode();
 
     // Voeg speler toe
     const _insertResult = await client.execute(
