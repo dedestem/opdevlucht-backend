@@ -3,6 +3,26 @@ import { Application, Router } from "https://deno.land/x/oak@v12.5.0/mod.ts";
 import { oakCors } from "https://deno.land/x/cors@v1.2.2/mod.ts";
 import { Client } from "https://deno.land/x/mysql/mod.ts";
 
+// Polyfill voor oude V8 zonder replaceAll
+//! We hebben V8 alleen de mysql client ding doet vage dingen.
+if (!String.prototype.replaceAll) {
+  String.prototype.replaceAll = function (
+    search: string | RegExp,
+    replacement: string | ((substring: string, ...args: any[]) => string)
+  ): string {
+    if (typeof search === "string") {
+      if (typeof replacement === "string") {
+        return this.split(search).join(replacement);
+      } else {
+        // Fallback: callback niet ondersteund in simpele polyfill
+        throw new Error("replaceAll polyfill only supports string replacement.");
+      }
+    } else {
+      throw new Error("replaceAll polyfill only supports string search.");
+    }
+  };
+}
+
 // TODO
 // Add last_interacted to match info. To expire based on that.
 // Let players expire based on an alive ping
