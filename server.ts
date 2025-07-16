@@ -39,7 +39,7 @@ await waitForDbReady();
 const createMatchesTableQuery = `
   CREATE TABLE IF NOT EXISTS matches (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    joincode VARCHAR(10) NOT NULL UNIQUE,
+    joincode VARCHAR(6) NOT NULL UNIQUE,
     maxplayers INT NOT NULL,
     locationinterval INT NOT NULL,
     matchtime INT NOT NULL,
@@ -61,6 +61,7 @@ const createSessionsTableQuery = `
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     picture TEXT NOT NULL, 
     last_interacted TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    arrest_code VARCHAR(6) NOT NULL UNIQUE
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
   )
 `;
@@ -82,7 +83,7 @@ await client.execute(createSessionsTableQuery);
 await client.execute(createLocationsTableQuery);
 
 // Join code generator
-function generateJoinCode(length = 6) {
+function GenerateRandomCode(length = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let result = "";
   for (let i = 0; i < length; i++) {
@@ -93,9 +94,22 @@ function generateJoinCode(length = 6) {
 
 async function generateUniqueJoinCode(): Promise<string> {
   while (true) {
-    const code = generateJoinCode();
+    const code = GenerateRandomCode();
     const result = await client.query(
       "SELECT id FROM matches WHERE joincode = ?",
+      [code],
+    );
+    if (result.length === 0) {
+      return code;
+    }
+  }
+}
+
+async function generateUniqueArrestCode(): Promise<string> {
+  while (true) {
+    const code = GenerateRandomCode();
+    const result = await client.query(
+      "SELECT id FROM sessions WHERE arrest_code = ?",
       [code],
     );
     if (result.length === 0) {
@@ -261,11 +275,12 @@ router.post("/create-match", async (ctx) => {
     // Maker token
     const token = generateToken();
     const picture = GenPlrPic(name);
+    const arrestcode = generateUniqueArrestCode();
 
     // Maker toevoegen als owner met rol hunter
     await client.execute(
-      `INSERT INTO sessions (match_id, name, role, is_owner, token, picture) VALUES (?, ?, ?, ?, ?, ?)`,
-      [matchId, name.trim(), "hunter", true, token, picture],
+      `INSERT INTO sessions (match_id, name, role, is_owner, token, picture, arrest_code) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [matchId, name.trim(), "hunter", true, token, picture, arrestcode],
     );
 
     ctx.response.status = 200;
@@ -331,11 +346,12 @@ router.post("/join-match", async (ctx) => {
     // Nieuwe token voor speler
     const token = generateToken();
     const picture = GenPlrPic(name);
+    const arrestcode = generateUniqueArrestCode();
 
     // Voeg speler toe
     const _insertResult = await client.execute(
-      `INSERT INTO sessions (match_id, name, role, is_owner, token, picture) VALUES (?, ?, ?, ?, ?, ?)`,
-      [match.id, name.trim(), role, false, token, picture],
+      `INSERT INTO sessions (match_id, name, role, is_owner, token, picture, arrestcode) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [match.id, name.trim(), role, false, token, picture, arrestcode],
     );
 
     ctx.response.status = 200;
