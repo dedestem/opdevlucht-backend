@@ -57,11 +57,12 @@ const createSessionsTableQuery = `
     name VARCHAR(50) NOT NULL,
     role ENUM('hunter', 'criminal') NOT NULL,
     is_owner BOOLEAN DEFAULT FALSE,
+    arrested BOOLEAN DEFAULT FALSE,
     token VARCHAR(36) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     picture TEXT NOT NULL, 
     last_interacted TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    arrest_code VARCHAR(6) NOT NULL UNIQUE
+    arrest_code VARCHAR(6) NOT NULL UNIQUE,
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
   )
 `;
@@ -920,6 +921,87 @@ router.get("/get-criminals-locations", async (ctx) => {
     ctx.response.body = { error: "unknown error" };
   }
 });
+
+router.post("/get-arrest-code", async (ctx) => {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const { token } = body;
+
+    const requester = await client.query(
+      "SELECT * FROM sessions WHERE token = ?",
+      [token],
+    );
+    if (requester.length === 0) {
+      console.log("token not found in sessions");
+      ctx.response.status = 404;
+      ctx.response.body = { error: "no session found!" };
+      return;
+    }
+
+    updateLastInteracted({ token: token });
+
+    ctx.response.status = 200;
+    ctx.response.body = { code: requester[0].arrest_code};
+  } catch (err) {
+    console.error(err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "unknown error" };
+  }
+});
+
+router.post("/arrest", async (ctx) => {
+  try {
+    const body = await ctx.request.body({ type: "json" }).value;
+    const { token, match_id, arrest_code } = body;
+
+    if (!token || !match_id || !arrest_code) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "token, match_id en arrest_code zijn verplicht" };
+      return;
+    }
+
+    // 1. Valideer hunter session
+    const hunterSession = await client.query(
+      "SELECT * FROM sessions WHERE token = ? AND role = 'hunter' AND match_id = ?",
+      [token, match_id],
+    );
+
+    if (hunterSession.length === 0) {
+      ctx.response.status = 401;
+      ctx.response.body = { error: "Ongeldig token of geen hunter in deze match" };
+      return;
+    }
+
+    // 2. Zoek target session met arrest_code
+    const targetSession = await client.query(
+      "SELECT * FROM sessions WHERE arrest_code = ? AND match_id = ?",
+      [arrest_code, match_id],
+    );
+
+    if (targetSession.length === 0) {
+      ctx.response.status = 404;
+      ctx.response.body = { error: "Doelwit niet gevonden" };
+      return;
+    }
+
+    const targetId = targetSession[0].id;
+    const name = targetSession[0].name;
+
+    // 3. Markeer target als arrested
+    await client.execute(
+      "UPDATE sessions SET arrested = TRUE WHERE id = ?",
+      [targetId],
+    );
+
+    ctx.response.status = 200;
+    ctx.response.body = { success: true, name: name };
+  } catch (err) {
+    console.error(err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "unknown error" };
+  }
+});
+
 
 app.use(router.routes());
 app.use(router.allowedMethods());
