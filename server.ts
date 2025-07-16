@@ -105,6 +105,7 @@ async function generateUniqueJoinCode(): Promise<string> {
       [code],
     );
     if (result.length === 0) {
+      console.log("Generated joincode: " + code);
       return code;
     }
   }
@@ -118,6 +119,7 @@ async function generateUniqueArrestCode(): Promise<string> {
       [code],
     );
     if (result.length === 0) {
+      console.log("Generated Arrestcode: " + code);
       return code;
     }
   }
