@@ -43,7 +43,7 @@ await waitForDbReady();
 const createMatchesTableQuery = `
   CREATE TABLE IF NOT EXISTS matches (
     id INT PRIMARY KEY AUTO_INCREMENT,
-    joincode VARCHAR(6) NOT NULL UNIQUE,
+    joincode VARCHAR(10) NOT NULL UNIQUE,
     maxplayers INT NOT NULL,
     locationinterval INT NOT NULL,
     matchtime INT NOT NULL,
@@ -66,7 +66,7 @@ const createSessionsTableQuery = `
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     picture TEXT NOT NULL, 
     last_interacted TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    arrest_code VARCHAR(6) NOT NULL UNIQUE,
+    arrest_code VARCHAR(10) NOT NULL UNIQUE,
     FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE
   )
 `;
@@ -282,7 +282,7 @@ router.post("/create-match", async (ctx) => {
     // Maker token
     const token = generateToken();
     const picture = GenPlrPic(name);
-    const arrestcode = generateUniqueArrestCode();
+    const arrestcode = await generateUniqueArrestCode();
 
     // Maker toevoegen als owner met rol hunter
     await client.execute(
